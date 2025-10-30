@@ -1,5 +1,8 @@
 import mimetypes
-from typing import Optional
+import filetype
+from typing import Optional, Tuple
+from io import BytesIO
+from PIL import Image, UnidentifiedImageError
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy import asc, desc
@@ -26,10 +29,28 @@ def _normalize_format(fmt: Optional[str]) -> Optional[str]:
     return fmt
 
 
-def _infer_format_from_filename(filename: str) -> Optional[str]:
+def _infer_format_from_filename(filename: str, data: Optional[bytes] = None) -> Optional[str]:
+    # 先尝试从文件名中推断格式
     if "." in filename:
         ext = filename.rsplit(".", 1)[-1].lower()
-        return _normalize_format(ext)
+        fmt = _normalize_format(ext)
+        if fmt:
+            return fmt
+    
+    # 如果从文件名中推断失败，再尝试从文件内容中推断格式
+    if data:
+        # 尝试从文件内容中推断图片类型
+        kind = filetype.guess(data)
+        
+        # 将图片类型转换为对应的文件扩展名
+        if kind:
+            if kind.extension == "jpeg":
+                return "jpg"
+            elif kind.extension == "png":
+                return "png"
+            elif kind.extension == "webp":
+                return "webp"
+    
     return None
 
 
@@ -42,6 +63,14 @@ def _content_type_for(fmt: Optional[str]) -> Optional[str]:
         return "image/webp"
     return None
 
+def get_image_dimensions(data: bytes) -> Tuple[Optional[int], Optional[int]]:
+    """从图片字节中获取宽度和高度"""
+    try:
+        with Image.open(BytesIO(data)) as img:
+            return img.width, img.height
+    except UnidentifiedImageError:
+        return None, None
+
 
 @router.post("/upload", response_model=ImageOut, status_code=status.HTTP_201_CREATED)
 async def upload_image(
@@ -50,30 +79,39 @@ async def upload_image(
     file: UploadFile = File(...),
     bucket: Optional[str] = Form(None, description="目标 OSS bucket，不填则用默认配置"),
     tags: Optional[str] = Form(None, description="逗号分隔的标签，如：banner,home"),
-    width: Optional[int] = Form(None, description="目标宽度，可选"),
-    height: Optional[int] = Form(None, description="目标高度，可选"),
+    width: Optional[str] = Form(None, description="目标宽度，可选"),
+    height: Optional[str] = Form(None, description="目标高度，可选"),
     target_format: Optional[str] = Form(None, description="目标格式：png/jpg/webp，可选"),
 ):
     data = await file.read()
     if not data:
         raise HTTPException(status_code=400, detail="上传文件为空")
 
-    to_format = _normalize_format(target_format) or _infer_format_from_filename(file.filename)
+    # 处理宽度和高度参数，如果是空字符串则转换为None
+    width_int = int(width) if width and width.strip() else None
+    height_int = int(height) if height and height.strip() else None
+
+    to_format = _normalize_format(target_format) or _infer_format_from_filename(file.filename, data)
 
     out_data = data
     out_width = None
     out_height = None
     out_format = to_format
-
+    
     if tinify_enabled():
         out_data, out_width, out_height, fmt_from_tiny = compress_and_resize(
             data,
-            target_width=width,
-            target_height=height,
+            target_width=width_int,
+            target_height=height_int,
             target_format=to_format,
         )
         if fmt_from_tiny:
             out_format = fmt_from_tiny
+    else:
+        # 如果Tinify服务不可用，直接使用原始图片数据
+        out_data = data
+        # 尝试获取原始图片的宽高
+        out_width, out_height = get_image_dimensions(out_data)
 
     content_type = _content_type_for(out_format) or (mimetypes.guess_type(file.filename)[0] or "application/octet-stream")
 
@@ -99,7 +137,7 @@ async def upload_image(
         width=out_width,
         height=out_height,
         # 统一保存为规范化格式（png/jpg/webp），无法识别则为 bin
-        format=_normalize_format(out_format or _infer_format_from_filename(file.filename)) or "bin",
+        format=_normalize_format(out_format or _infer_format_from_filename(file.filename, data)) or "bin",
         tags=[t.strip() for t in (tags or "").split(",") if t.strip()],
     )
     db.add(record)
