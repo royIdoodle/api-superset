@@ -65,7 +65,8 @@ async def upload_image(
     out_height = None
     out_format = to_format
 
-    if tinify_enabled():
+    # Only compress if it's an image (has a recognized image format)
+    if tinify_enabled() and to_format:
         out_data, out_width, out_height, fmt_from_tiny = compress_and_resize(
             data,
             target_width=width,
