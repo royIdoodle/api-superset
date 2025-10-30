@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     OSS_ENDPOINT: str = "https://oss-your-endpoint.aliyuncs.com"
     OSS_ACCESS_KEY_ID: str = ""
     OSS_ACCESS_KEY_SECRET: str = ""
-    DEFAULT_OSS_BUCKET: str = ""
+    DEFAULT_OSS_BUCKET: str = "common"
     # 可选：支持多个可用桶名
     OSS_BUCKETS: Optional[List[str]] = None
 
