@@ -7,6 +7,7 @@
 - TinyPNG 压缩：配置 `TINIFY_API_KEY` 后自动启用
 - 图片查询：按 bucket、标签、格式过滤，分页
 - 统计：总量、总大小、按格式/按 bucket 分布、近 30 天每日上传量
+- 测试页：`/test/upload` 提供上传表单，便于本地验证
 
 ## 环境要求
 - Python 3.10+
@@ -15,14 +16,20 @@
 
 ## 快速开始
 1. 克隆代码并进入目录
-2. 创建并填写环境文件（参考下方环境变量说明）：
-   - 复制 `ENV.sample` 为 `.env` 并按需修改
-3. 安装依赖并启动：
+2. 创建并填写环境文件：复制 `ENV.sample` 为 `.env`
+3. 安装依赖：
    ```bash
    make setup
+   ```
+4. 初始化数据库与数据表（会自动创建数据库与表）：
+   ```bash
+   make db-init
+   ```
+5. 启动服务：
+   ```bash
    make run
    ```
-4. 打开接口文档：`http://localhost:8000/docs`
+6. 打开接口文档：`http://localhost:8000/docs`，测试页：`http://localhost:8000/test/upload`
 
 ## 环境变量
 将以下变量写入 `.env`（或以系统环境变量形式注入）：
@@ -49,7 +56,8 @@ TINIFY_API_KEY=your_tinypng_api_key
 
 ## 运行脚本
 - 初始化与安装依赖：`scripts/setup.sh`
-- 开发启动（含自动重载）：`scripts/run.sh`
+- 初始化数据库与表：`scripts/db_init.sh`（`make db-init`）
+- 开发启动（含自动重载）：`scripts/run.sh`（`make run`）
 
 ## 主要目录
 - `app/main.py`：应用入口，注册路由与启动逻辑
@@ -60,6 +68,7 @@ TINIFY_API_KEY=your_tinypng_api_key
 - `app/tinify_client.py`：TinyPNG 压缩与可选转换/缩放
 - `app/routers/images.py`：上传与查询 API
 - `app/routers/stats.py`：统计 API
+- `app/routers/test.py`：上传测试页 `/test/upload`
 
 ## API 使用示例
 - 上传图片
