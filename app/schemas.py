@@ -36,3 +36,14 @@ class StatsResponse(BaseModel):
     uploads_by_day: List[dict]
 
 
+class PdfTransferRequest(BaseModel):
+    url: str = Field(..., description="在线PDF文件URL")
+    bucket: Optional[str] = Field(None, description="目标 OSS bucket，不填则用默认配置")
+
+
+class PdfTransferResponse(BaseModel):
+    bucket: str
+    key: str
+    url: Optional[str] = None
+
+
