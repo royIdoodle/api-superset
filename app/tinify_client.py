@@ -1,6 +1,7 @@
 from typing import Optional, Tuple
 
 import tinify
+from tinify.errors import ClientError
 
 from .config import get_settings
 
@@ -28,32 +29,36 @@ def compress_and_resize(
     if not is_enabled():
         return data, None, None, None
 
-    source = tinify.from_buffer(data)
+    try:
+        source = tinify.from_buffer(data)
 
-    # 尺寸调整
-    if target_width and target_height:
-        source = source.resize(method="fit", width=target_width, height=target_height)
-    elif target_width and not target_height:
-        source = source.resize(method="scale", width=target_width)
-    elif target_height and not target_width:
-        source = source.resize(method="scale", height=target_height)
+        # 尺寸调整
+        if target_width and target_height:
+            source = source.resize(method="fit", width=target_width, height=target_height)
+        elif target_width and not target_height:
+            source = source.resize(method="scale", width=target_width)
+        elif target_height and not target_width:
+            source = source.resize(method="scale", height=target_height)
 
-    # 格式转换（支持 png/jpg/webp）
-    fmt = None
-    if target_format:
-        to = target_format.lower()
-        if to in {"jpg", "jpeg"}:
-            to = "jpg"
-        if to in {"png", "jpg", "webp"}:
-            source = tinify.convert(source=source, convert={"type": f"image/{to}"})
-            fmt = to
+        # 格式转换（支持 png/jpg/webp）
+        fmt = None
+        if target_format:
+            to = target_format.lower()
+            if to in {"jpg", "jpeg"}:
+                to = "jpg"
+            if to in {"png", "jpg", "webp"}:
+                source = source.convert(type=f"image/{to}")
+                fmt = to
 
-    result = source.result()
-    out_data = result.to_buffer()
+        result = source.result()
+        out_data = result.to_buffer()
 
-    width = result.width if hasattr(result, "width") else None
-    height = result.height if hasattr(result, "height") else None
+        width = result.width if hasattr(result, "width") else None
+        height = result.height if hasattr(result, "height") else None
 
-    return out_data, width, height, fmt
+        return out_data, width, height, fmt
+    except ClientError as e:
+        # 如果是不支持的文件类型或其他客户端错误，返回原始数据
+        return data, None, None, None
 
 
