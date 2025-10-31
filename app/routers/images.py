@@ -1,7 +1,12 @@
 import mimetypes
+import logging
+
+logger = logging.getLogger(__name__)
+
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi.responses import Response
 from sqlalchemy import asc, desc
 from sqlalchemy.orm import Session
 
@@ -10,6 +15,7 @@ from ..models import ImageAsset
 from ..oss import upload_bytes, suggest_object_key
 from ..schemas import ImageListResponse, ImageOut
 from ..tinify_client import compress_and_resize, is_enabled as tinify_enabled
+from ..config import get_settings
 
 
 router = APIRouter()
@@ -54,6 +60,23 @@ async def upload_image(
     height: Optional[int] = Form(None, description="目标高度，可选"),
     target_format: Optional[str] = Form(None, description="目标格式：png/jpg/webp，可选"),
 ):
+    # 校验 bucket
+    settings = get_settings()
+    allowed_buckets = settings.OSS_BUCKETS or []
+    default_bucket = settings.DEFAULT_OSS_BUCKET
+    final_bucket = bucket
+
+    if bucket:
+        if allowed_buckets and bucket not in allowed_buckets:
+            if default_bucket:
+                final_bucket = default_bucket
+            else:
+                raise HTTPException(status_code=400, detail=f"不支持的 bucket: {bucket}")
+    else:
+        if not default_bucket:
+            raise HTTPException(status_code=400, detail="未提供 bucket 且未配置默认 bucket")
+        final_bucket = default_bucket
+
     data = await file.read()
     if not data:
         raise HTTPException(status_code=400, detail="上传文件为空")
@@ -80,14 +103,23 @@ async def upload_image(
     # 生成对象key
     object_key = suggest_object_key(file.filename, out_format)
 
-    # 上传到 OSS
-    final_bucket, final_key, public_url = upload_bytes(
-        out_data,
-        original_filename=file.filename,
-        bucket_name=bucket,
-        key=object_key,
-        content_type=content_type,
-    )
+    try:
+        # 上传到 OSS
+        final_bucket, final_key, public_url = upload_bytes(
+            out_data,
+            original_filename=file.filename,
+            bucket_name=final_bucket,
+            key=object_key,
+            content_type=content_type,
+        )
+    except Exception as e:
+        # 处理所有错误
+        error_detail = f"OSS上传失败: {str(e)}"
+        logger.error(error_detail)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=error_detail
+        )
 
     # 保存数据库记录
     record = ImageAsset(
